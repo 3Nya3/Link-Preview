@@ -23,7 +23,6 @@
     let isPreviewCreated = false;
     let linkClickPrevented = false;
   
-    // Load saved settings from localStorage
     function loadSavedSettings() {
       const savedSettings = localStorage.getItem("linkPreviewSettings");
       if (savedSettings) {
@@ -31,7 +30,6 @@
       }
     }
   
-    // Save settings to localStorage
     function saveSettings() {
       if (previewWindow) {
         settings.width = previewWindow.offsetWidth;
@@ -40,13 +38,8 @@
       localStorage.setItem("linkPreviewSettings", JSON.stringify(settings));
     }
   
-    // Load saved settings on script initialization
     loadSavedSettings();
-  
-    // Event delegation for link interaction
     document.addEventListener("mousedown", handleMouseDown);
-  
-    // Inject CSS to prevent text selection
     const style = document.createElement("style");
     style.textContent = `
       .no-select {
@@ -87,8 +80,6 @@
       }
   `;
     document.head.appendChild(style);
-
-    // Dark mode adjustments
     const darkStyle = document.createElement("style");
     darkStyle.textContent = `
       @media (prefers-color-scheme: dark) {
@@ -127,11 +118,9 @@
       const startY = e.clientY;
   
       if (settings.isDragMode) {
-        // Add no-select to a broader area around the link
         document.body.classList.add("no-select");
         target.classList.add("no-select");
   
-        // Find parent containers that might have text
         let parent = target.parentElement;
         while (parent && parent !== document.body) {
           parent.classList.add("no-select");
@@ -147,7 +136,6 @@
           document.body.classList.remove("no-select");
           target.classList.remove("no-select");
   
-          // Clean up parent containers
           let cleanParent = target.parentElement;
           while (cleanParent && cleanParent !== document.body) {
             cleanParent.classList.remove("no-select");
@@ -178,7 +166,6 @@
       const dy = e.clientY - startY;
       const distance = Math.hypot(dx, dy);
   
-      // Add visual feedback when getting close to threshold
       if (distance > settings.dragThreshold * 0.5) {
         draggedLink.classList.add("link-preview-dragging");
       }
@@ -201,7 +188,6 @@
       document.removeEventListener("mousemove", handleDrag);
       document.removeEventListener("mouseup", stopInteraction);
   
-      // Ensure no-select and preview-dragging are removed
       document.body.classList.remove("no-select");
       if (draggedLink) {
         draggedLink.classList.remove("no-select");
@@ -221,19 +207,17 @@
   
     function handleLinkClick(e) {
       if (linkClickPrevented) {
-        e.preventDefault();
         e.stopPropagation();
         linkClickPrevented = false;
       }
     }
   
-    // Create preview window
     function createPreviewWindow(url, x, y) {
       if (previewWindow) {
         closePreviewWindow();
       }
   
-      // Create div for preview window
+
       previewWindow = document.createElement("div");
       previewWindow.id = "link-preview-window";
       previewWindow.style.cssText = `
@@ -257,21 +241,15 @@
           }
       `;
   
-      // Create title bar (now includes address bar)
+
       const titleBar = createTitleBar(url);
-  
-      // Create content
       const contentContainer = createContentContainer(url);
-  
-      // Append elements
       previewWindow.appendChild(titleBar);
       previewWindow.appendChild(contentContainer);
       document.body.appendChild(previewWindow);
   
-      // Make it draggable
+
       titleBar.addEventListener("mousedown", initDrag);
-  
-      // Make it resizable
       previewWindow.addEventListener("resize", saveSettings);
   
       let left = x;
@@ -294,15 +272,12 @@
       previewWindow.style.left = `${left}px`;
       previewWindow.style.top = `${top}px`;
   
-      // Clean up on close
-      previewWindow.addEventListener("mouseup", saveSettings);
+
       previewWindow.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
           closePreviewWindow();
         }
       });
-  
-      // Handle iframe content loading
       handleIframeContentLoading(contentContainer, url);
     }
   
@@ -531,17 +506,7 @@
       // Add search functionality
       searchButton.addEventListener("click", (e) => {
           e.stopPropagation();
-          const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(addressBar.value)}`;
-          
-          // Navigate within the preview iframe instead of opening new tab
-          const previewWindow = document.getElementById("link-preview-window");
-          if (previewWindow) {
-            const iframe = previewWindow.querySelector("iframe");
-            if (iframe) {
-              iframe.src = searchUrl;
-              addressBar.value = searchUrl;
-            }
-          }
+          navigateOrSearch(addressBar.value);
       });
       
       // Add elements to container
@@ -557,21 +522,58 @@
         e.stopPropagation();
       });
       
-      // Allow Enter key to navigate to the URL
+
+      
+      // Helper function to detect if text is a URL
+      function isValidUrl(text) {
+        try {
+          // Check if it's already a complete URL
+          new URL(text);
+          return true;
+        } catch {
+          // Check if it looks like a domain (contains dot and no spaces)
+          if (text.includes('.') && !text.includes(' ') && text.length > 3) {
+            try {
+              new URL('http://' + text);
+              return true;
+            } catch {
+              return false;
+            }
+          }
+          return false;
+        }
+      }
+      
+      // Helper function to navigate to URL or search
+      function navigateOrSearch(input) {
+        const trimmed = input.trim();
+        if (!trimmed) return;
+        
+        let finalUrl;
+        if (isValidUrl(trimmed)) {
+          // It's a URL - add protocol if missing
+          finalUrl = trimmed.startsWith('http') ? trimmed : 'https://' + trimmed;
+        } else {
+          // It's a search query
+          finalUrl = `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+        }
+        
+        // Update the iframe
+        const previewWindow = document.getElementById("link-preview-window");
+        if (previewWindow) {
+          const iframe = previewWindow.querySelector("iframe");
+          if (iframe) {
+            iframe.src = finalUrl;
+            addressBar.value = finalUrl;
+          }
+        }
+      }
+      
+      // Allow Enter key to navigate to the URL or search
       addressBar.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          const newUrl = addressBar.value.trim();
-          if (newUrl) {
-            // Find the iframe and update its src
-            const previewWindow = document.getElementById("link-preview-window");
-            if (previewWindow) {
-              const iframe = previewWindow.querySelector("iframe");
-              if (iframe) {
-                iframe.src = newUrl;
-              }
-            }
-          }
+          navigateOrSearch(addressBar.value);
         }
       });
       
