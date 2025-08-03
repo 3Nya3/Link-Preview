@@ -49,6 +49,25 @@
           user-select: none;
           -webkit-touch-callout: none;
       }
+      
+      /* Allow text selection within preview windows */
+      #link-preview-window,
+      #link-preview-window * {
+          -webkit-user-select: text !important;
+          -moz-user-select: text !important;
+          -ms-user-select: text !important;
+          user-select: text !important;
+          -webkit-touch-callout: default !important;
+      }
+      
+      /* But prevent selection on UI elements */
+      #link-preview-window button,
+      #link-preview-window input {
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+          user-select: none !important;
+      }
   
       .link-preview-dragging {
           position: relative;
@@ -102,7 +121,13 @@
     document.head.appendChild(darkStyle);
   
     function handleMouseDown(e) {
-      if (previewWindow) return;
+      // Don't interfere with preview window interactions
+      if (previewWindow) {
+        // Allow normal interaction within preview window
+        if (e.target.closest('#link-preview-window')) {
+          return;
+        }
+      }
   
       const target = e.target.closest("a, [data-href]");
       if (!target) return;
@@ -118,13 +143,14 @@
       const startY = e.clientY;
   
       if (settings.isDragMode) {
-        document.body.classList.add("no-select");
+        // Only apply no-select to the specific link and its immediate context
+        // Don't apply to the entire document body to avoid interfering with other interactions
         target.classList.add("no-select");
   
-        let parent = target.parentElement;
-        while (parent && parent !== document.body) {
-          parent.classList.add("no-select");
-          parent = parent.parentElement;
+        // Only apply to direct parent, not all ancestors
+        const immediateParent = target.parentElement;
+        if (immediateParent && immediateParent !== document.body) {
+          immediateParent.classList.add("no-select");
         }
   
         const dragHandler = (moveEvent) =>
@@ -133,13 +159,11 @@
   
         const cleanupSelection = () => {
           document.removeEventListener("mousemove", dragHandler);
-          document.body.classList.remove("no-select");
           target.classList.remove("no-select");
   
-          let cleanParent = target.parentElement;
-          while (cleanParent && cleanParent !== document.body) {
-            cleanParent.classList.remove("no-select");
-            cleanParent = cleanParent.parentElement;
+          // Clean up only the immediate parent
+          if (immediateParent && immediateParent !== document.body) {
+            immediateParent.classList.remove("no-select");
           }
         };
   
@@ -482,7 +506,7 @@
       // Create search button
       const searchButton = document.createElement("button");
       searchButton.textContent = "🔍";
-      searchButton.title = "Search with URL";
+      searchButton.title = "Navigate to URL";
       searchButton.style.cssText = `
           width: 32px;
           height: 32px;
@@ -509,10 +533,41 @@
           navigateOrSearch(addressBar.value);
       });
       
+      // Create "Open in new tab" button
+      const newTabButton = document.createElement("button");
+      newTabButton.textContent = "↗";
+      newTabButton.title = "Open in New Tab";
+      newTabButton.style.cssText = `
+          width: 32px;
+          height: 32px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.9);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 14px;
+          transition: all 0.2s ease;
+  
+          &:hover {
+              background: rgba(0, 0, 0, 0.1);
+              border-color: rgba(0, 0, 0, 0.2);
+          }
+      `;
+      
+      newTabButton.style.color = "#333";
+      // Add new tab functionality
+      newTabButton.addEventListener("click", (e) => {
+          e.stopPropagation();
+          window.open(addressBar.value, "_blank");
+      });
+      
       // Add elements to container
       container.appendChild(addressBar);
       container.appendChild(copyButton);
       container.appendChild(searchButton);
+      container.appendChild(newTabButton);
       
       // Store reference to input for external access
       container.input = addressBar;
@@ -521,8 +576,6 @@
       addressBar.addEventListener("mousedown", (e) => {
         e.stopPropagation();
       });
-      
-
       
       // Helper function to detect if text is a URL
       function isValidUrl(text) {
@@ -558,13 +611,38 @@
           finalUrl = `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
         }
         
-        // Update the iframe
-        const previewWindow = document.getElementById("link-preview-window");
-        if (previewWindow) {
-          const iframe = previewWindow.querySelector("iframe");
+        // Update the iframe and address bar
+        const currentPreviewWindow = container.closest('#link-preview-window');
+        if (currentPreviewWindow) {
+          const iframe = currentPreviewWindow.querySelector("iframe");
           if (iframe) {
+            // Clear any existing error messages
+            const errorMessages = currentPreviewWindow.querySelectorAll('.error-message');
+            errorMessages.forEach(msg => msg.remove());
+            
+            // Show iframe again if it was hidden
+            iframe.style.display = 'block';
+            
+            // Navigate to new URL
             iframe.src = finalUrl;
             addressBar.value = finalUrl;
+            
+            // Set up error handling for the new URL
+            iframe.onerror = () => showContentError(iframe, finalUrl);
+            
+            // Handle iframe load to detect cross-origin issues
+            iframe.onload = () => {
+              try {
+                // Try to access the iframe content to detect cross-origin restrictions
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                if (!iframeDoc || iframeDoc.location.href === 'about:blank') {
+                  showContentError(iframe, finalUrl);
+                }
+              } catch (e) {
+                // Cross-origin restriction detected
+                showContentError(iframe, finalUrl);
+              }
+            };
           }
         }
       }
