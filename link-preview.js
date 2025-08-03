@@ -14,6 +14,8 @@
       isDragMode: true,
       width: 500,
       height: 400,
+      minWidth: 520,
+      minHeight: 250,
       dragThreshold: 30
     };
   
@@ -119,6 +121,50 @@
       }
     `;
     document.head.appendChild(darkStyle);
+  
+    // Function to update address bar layout based on window width
+    function updateAddressBarLayout(windowWidth) {
+      const addressBarContainers = document.querySelectorAll('#link-preview-window .address-bar-container');
+      addressBarContainers.forEach(container => {
+        const addressBar = container.querySelector('input');
+        const buttons = container.querySelectorAll('button');
+        
+        if (windowWidth < 400) {
+          // Very small window - stack buttons vertically or hide some
+          container.style.flexWrap = 'wrap';
+          container.style.gap = '4px';
+          addressBar.style.minWidth = '200px';
+          addressBar.style.fontSize = '12px';
+          buttons.forEach(btn => {
+            btn.style.width = '28px';
+            btn.style.height = '28px';
+            btn.style.fontSize = '12px';
+          });
+        } else if (windowWidth < 500) {
+          // Small window - compact layout
+          container.style.flexWrap = 'nowrap';
+          container.style.gap = '6px';
+          addressBar.style.minWidth = '150px';
+          addressBar.style.fontSize = '13px';
+          buttons.forEach(btn => {
+            btn.style.width = '30px';
+            btn.style.height = '30px';
+            btn.style.fontSize = '13px';
+          });
+        } else {
+          // Normal window - default layout
+          container.style.flexWrap = 'nowrap';
+          container.style.gap = '8px';
+          addressBar.style.minWidth = 'auto';
+          addressBar.style.fontSize = '14px';
+          buttons.forEach(btn => {
+            btn.style.width = '32px';
+            btn.style.height = '32px';
+            btn.style.fontSize = '14px';
+          });
+        }
+      });
+    }
   
     function handleMouseDown(e) {
       // Don't interfere with preview window interactions
@@ -250,6 +296,8 @@
           top: ${y}px;
           width: ${settings.width}px;
           height: ${settings.height}px;
+          min-width: ${settings.minWidth}px;
+          min-height: ${settings.minHeight}px;
           background-color: rgba(255, 255, 255, 0.8);
           backdrop-filter: blur(12px);
           border: 1px solid rgba(255, 255, 255, 0.5);
@@ -275,6 +323,28 @@
 
       titleBar.addEventListener("mousedown", initDrag);
       previewWindow.addEventListener("resize", saveSettings);
+  
+      // Add resize observer to handle responsive layout
+      if (window.ResizeObserver) {
+        const resizeObserver = new ResizeObserver(entries => {
+          for (let entry of entries) {
+            const { width, height } = entry.contentRect;
+            // Ensure minimum dimensions
+            if (width < settings.minWidth) {
+              previewWindow.style.width = `${settings.minWidth}px`;
+            }
+            if (height < settings.minHeight) {
+              previewWindow.style.height = `${settings.minHeight}px`;
+            }
+            // Update address bar layout for small windows
+            updateAddressBarLayout(width);
+          }
+        });
+        resizeObserver.observe(previewWindow);
+        
+        // Store observer for cleanup
+        previewWindow.resizeObserver = resizeObserver;
+      }
   
       let left = x;
       let top = y;
@@ -436,12 +506,15 @@
     function createAddressBar(url) {
       // Create container for address bar and buttons
       const container = document.createElement("div");
+      container.className = "address-bar-container";
       container.style.cssText = `
           display: flex;
           align-items: center;
           gap: 8px;
           width: calc(100% - 20px);
           margin: 8px 10px;
+          flex-wrap: nowrap;
+          min-width: 0;
       `;
       
       // Create editable input field
@@ -458,7 +531,10 @@
           background: rgba(255, 255, 255, 0.9);
           color: #333;
           box-sizing: border-box;
-          transition: border-color 0.2s ease;
+          transition: border-color 0.2s ease, font-size 0.2s ease;
+          min-width: 100px;
+          overflow: hidden;
+          text-overflow: ellipsis;
   
           &:hover {
               border-color: rgba(0, 0, 0, 0.2);
@@ -834,6 +910,12 @@
     function closePreviewWindow() {
       if (previewWindow) {
         saveSettings();
+  
+        // Clean up ResizeObserver
+        if (previewWindow.resizeObserver) {
+          previewWindow.resizeObserver.disconnect();
+          previewWindow.resizeObserver = null;
+        }
   
         // Remove event listeners
         const titleBar = previewWindow.querySelector("div");
